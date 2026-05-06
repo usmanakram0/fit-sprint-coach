@@ -99,20 +99,32 @@ const HiitFatLossApp = () => {
             <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
               <Camera className="h-4 w-4" /> Progress photo
             </h3>
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="group relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-border bg-secondary/40 transition hover:border-primary hover:bg-secondary/60"
-            >
-              {photo ? (
-                <img src={photo} alt="Progress" className="h-full w-full object-cover" />
-              ) : (
+            {photo ? (
+              <div className="grid grid-cols-2 gap-3">
+                <PhotoPane label="Now" src={photo} scaleX={1} onClick={() => fileRef.current?.click()} />
+                <PhotoPane
+                  label={`After −${goalKg[0]}kg`}
+                  src={photo}
+                  scaleX={result ? Math.max(0.8, 1 - (goalKg[0] / (parseFloat(weight) || 80)) * 0.6) : 1}
+                  highlight
+                  onClick={() => fileRef.current?.click()}
+                />
+              </div>
+            ) : (
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="group relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-border bg-secondary/40 transition hover:border-primary hover:bg-secondary/60"
+              >
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
                   <Upload className="h-10 w-10" />
                   <span className="text-sm">Click to upload</span>
                   <span className="text-xs">For tracking only — not analyzed</span>
                 </div>
-              )}
-            </button>
+              </button>
+            )}
+            <p className="mt-3 text-xs text-muted-foreground">
+              Simulated preview — narrows the silhouette proportional to your goal. Not a medical visualization.
+            </p>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
           </Card>
 
@@ -222,6 +234,43 @@ const Stat = ({ icon, label, value, sub }: { icon: React.ReactNode; label: strin
     </div>
     <div className="mt-2 text-2xl font-bold">{value}</div>
     <div className="text-xs text-muted-foreground">{sub}</div>
+  </div>
+);
+
+const PhotoPane = ({
+  label,
+  src,
+  scaleX,
+  highlight,
+  onClick,
+}: {
+  label: string;
+  src: string;
+  scaleX: number;
+  highlight?: boolean;
+  onClick: () => void;
+}) => (
+  <div className="flex flex-col gap-2">
+    <div
+      className={`relative aspect-[3/4] w-full overflow-hidden rounded-lg border ${
+        highlight ? "border-primary shadow-glow" : "border-border/50"
+      } bg-secondary/40`}
+    >
+      <img
+        src={src}
+        alt={label}
+        onClick={onClick}
+        className="h-full w-full cursor-pointer object-cover transition-transform duration-500 ease-out"
+        style={{ transform: `scaleX(${scaleX})`, transformOrigin: "center" }}
+      />
+      <span
+        className={`absolute left-2 top-2 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+          highlight ? "bg-gradient-primary text-primary-foreground" : "bg-background/80 text-foreground"
+        }`}
+      >
+        {label}
+      </span>
+    </div>
   </div>
 );
 
