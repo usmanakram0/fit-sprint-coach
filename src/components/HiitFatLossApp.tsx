@@ -1,11 +1,12 @@
 import { useState, useMemo, useRef, ChangeEvent } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { Upload, Flame, Timer, TrendingDown, Activity, Camera } from "lucide-react";
+import { Upload, Flame, Timer, TrendingDown, Activity, Camera, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 type Sex = "male" | "female";
@@ -23,6 +24,8 @@ function navyBodyFat(sex: Sex, heightCm: number, waistCm: number, neckCm: number
 
 const HiitFatLossApp = () => {
   const [photo, setPhoto] = useState<string | null>(null);
+  const [resultPhoto, setResultPhoto] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [sex, setSex] = useState<Sex>("male");
@@ -40,7 +43,10 @@ const HiitFatLossApp = () => {
     if (!f) return;
     if (f.size > 8 * 1024 * 1024) return toast.error("Image too large (max 8MB)");
     const reader = new FileReader();
-    reader.onload = () => setPhoto(reader.result as string);
+    reader.onload = () => {
+      setPhoto(reader.result as string);
+      setResultPhoto(null);
+    };
     reader.readAsDataURL(f);
   };
 
@@ -69,6 +75,26 @@ const HiitFatLossApp = () => {
 
   const unitLen = units === "metric" ? "cm" : "in";
   const unitW = units === "metric" ? "kg" : "lb";
+
+  const generateResult = async () => {
+    if (!photo || !result) return toast.error("Upload a photo and enter measurements first");
+    setGenerating(true);
+    setResultPhoto(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("transform-body", {
+        body: { image: photo, goalKg: goalKg[0], currentBf: result.bf, newBf: result.newBf },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      if (!data?.image) throw new Error("No image returned");
+      setResultPhoto(data.image);
+      toast.success("Projected result generated!");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to generate image");
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-hero">
@@ -100,16 +126,30 @@ const HiitFatLossApp = () => {
               <Camera className="h-4 w-4" /> Progress photo
             </h3>
             {photo ? (
-              <div className="grid grid-cols-2 gap-3">
-                <PhotoPane label="Now" src={photo} scaleX={1} onClick={() => fileRef.current?.click()} />
-                <PhotoPane
-                  label={`After −${goalKg[0]}kg`}
-                  src={photo}
-                  scaleX={result ? Math.max(0.8, 1 - (goalKg[0] / (parseFloat(weight) || 80)) * 0.6) : 1}
-                  highlight
-                  onClick={() => fileRef.current?.click()}
-                />
-              </div>
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <PhotoPane label="Now" src={photo} onClick={() => fileRef.current?.click()} />
+                  <PhotoPane
+                    label={`After −${goalKg[0]}kg`}
+                    src={resultPhoto || photo}
+                    highlight
+                    placeholder={!resultPhoto}
+                    loading={generating}
+                    onClick={() => fileRef.current?.click()}
+                  />
+                </div>
+                <Button
+                  onClick={generateResult}
+                  disabled={generating || !result}
+                  className="mt-4 w-full bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90"
+                >
+                  {generating ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating projected photo…</>
+                  ) : (
+                    <><Sparkles className="mr-2 h-4 w-4" /> {resultPhoto ? "Regenerate" : "Generate"} projected result</>
+                  )}
+                </Button>
+              </>
             ) : (
               <button
                 onClick={() => fileRef.current?.click()}
@@ -118,12 +158,12 @@ const HiitFatLossApp = () => {
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
                   <Upload className="h-10 w-10" />
                   <span className="text-sm">Click to upload</span>
-                  <span className="text-xs">For tracking only — not analyzed</span>
+                  <span className="text-xs">We'll generate a projected after-photo</span>
                 </div>
               </button>
             )}
             <p className="mt-3 text-xs text-muted-foreground">
-              Simulated preview — narrows the silhouette proportional to your goal. Not a medical visualization.
+              AI-generated projection based on your fat-loss goal. Illustrative only — not a medical or guaranteed result.
             </p>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
           </Card>
@@ -240,14 +280,16 @@ const Stat = ({ icon, label, value, sub }: { icon: React.ReactNode; label: strin
 const PhotoPane = ({
   label,
   src,
-  scaleX,
   highlight,
+  placeholder,
+  loading,
   onClick,
 }: {
   label: string;
   src: string;
-  scaleX: number;
   highlight?: boolean;
+  placeholder?: boolean;
+  loading?: boolean;
   onClick: () => void;
 }) => (
   <div className="flex flex-col gap-2">
@@ -260,9 +302,20 @@ const PhotoPane = ({
         src={src}
         alt={label}
         onClick={onClick}
-        className="h-full w-full cursor-pointer object-cover transition-transform duration-500 ease-out"
-        style={{ transform: `scaleX(${scaleX})`, transformOrigin: "center" }}
+        className={`h-full w-full cursor-pointer object-cover transition ${placeholder ? "opacity-30 blur-sm" : ""}`}
       />
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      )}
+      {placeholder && !loading && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="rounded-md bg-background/80 px-3 py-1 text-xs text-muted-foreground">
+            Click "Generate" below
+          </span>
+        </div>
+      )}
       <span
         className={`absolute left-2 top-2 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
           highlight ? "bg-gradient-primary text-primary-foreground" : "bg-background/80 text-foreground"
